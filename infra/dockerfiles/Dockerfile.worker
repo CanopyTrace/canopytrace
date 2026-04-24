@@ -18,15 +18,15 @@ COPY apps/ct-worker/ ./apps/ct-worker/
 RUN pnpm --filter @canopytrace/shared build
 RUN pnpm --filter @canopytrace/ct-worker build
 
+FROM build AS deploy
+RUN pnpm --filter @canopytrace/ct-worker deploy --prod /deploy
+
 FROM node:20-alpine AS runner
-RUN corepack enable && corepack prepare pnpm@9.15.0 --activate
 WORKDIR /app
 
 ENV NODE_ENV=production
 
-COPY --from=build /app/apps/ct-worker/dist ./dist
-COPY --from=build /app/packages/shared/dist ./node_modules/@canopytrace/shared/dist
-COPY --from=build /app/node_modules ./node_modules
+COPY --from=deploy /deploy ./
 
 USER node
 

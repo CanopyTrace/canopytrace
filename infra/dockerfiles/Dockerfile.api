@@ -27,18 +27,20 @@ RUN pnpm --filter @canopytrace/shared build
 RUN pnpm --filter @canopytrace/ct-api build
 
 # ---------------------------------------------------------------------------
+# Stage: deploy — production-only bundle (no devDependencies)
+# ---------------------------------------------------------------------------
+FROM build AS deploy
+RUN pnpm --filter @canopytrace/ct-api deploy --prod /deploy
+
+# ---------------------------------------------------------------------------
 # Stage: runner — minimal production image
 # ---------------------------------------------------------------------------
 FROM node:20-alpine AS runner
-RUN corepack enable && corepack prepare pnpm@9.15.0 --activate
 WORKDIR /app
 
 ENV NODE_ENV=production
 
-# Only copy what the runtime needs
-COPY --from=build /app/apps/ct-api/dist ./dist
-COPY --from=build /app/packages/shared/dist ./node_modules/@canopytrace/shared/dist
-COPY --from=build /app/node_modules ./node_modules
+COPY --from=deploy /deploy ./
 
 EXPOSE 3001
 USER node
