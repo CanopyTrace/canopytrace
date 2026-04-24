@@ -22,9 +22,11 @@ tags = ["jwt", "secret"]
 [allowlist]
 description = "Allowlist for intentional non-secret patterns"
 paths = [
-  "infra/.env.example",   # example values are placeholders, not real secrets
-  ".gitignore",
+  # All .env.example files contain only placeholders — never real secrets
+  '''(^|/)\.env\.example$''',
+  '''(^|/)\.gitignore$''',
 ]
 regexes = [
-  "change_me_never_commit",   # explicit placeholder text in .env.example
+  # Canonical placeholder text used across all .env.example files
+  '''change_me_never_commit''',
 ]
