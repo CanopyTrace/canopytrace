@@ -1,0 +1,18 @@
+{
+  "name": "@canopytrace/db",
+  "version": "0.0.0",
+  "private": true,
+  "description": "SQL-first database migrations for CanopyTrace",
+  "scripts": {
+    "migrate:up": "node scripts/run.js up",
+    "migrate:down": "node scripts/run.js down 1",
+    "migrate:status": "node scripts/status.js",
+    "migrate:reset": "node scripts/reset.js",
+    "migrate:create": "node scripts/run.js create"
+  },
+  "devDependencies": {
+    "dotenv": "^16.0.0",
+    "node-pg-migrate": "^7.0.0",
+    "pg": "^8.0.0"
+  }
+}
