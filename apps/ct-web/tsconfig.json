@@ -3,7 +3,6 @@
   "compilerOptions": {
     "rootDir": "src",
     "outDir": "dist",
-    "baseUrl": ".",
     "paths": {
       "@canopytrace/shared": ["../../packages/shared/src/index.ts"]
     }
