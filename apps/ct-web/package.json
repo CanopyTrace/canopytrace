@@ -1,0 +1,28 @@
+{
+  "name": "@canopytrace/ct-web",
+  "version": "0.0.0",
+  "private": true,
+  "description": "CanopyTrace operator UI — Next.js",
+  "scripts": {
+    "lint": "eslint src --max-warnings 0",
+    "format": "prettier --write . --ignore-path ../../.prettierignore",
+    "format:check": "prettier --check . --ignore-path ../../.prettierignore",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "build": "echo 'Next.js build placeholder — wired in Phase 7'",
+    "dev": "echo 'Next.js dev server placeholder — wired in Phase 7'",
+    "clean": "rm -rf .next"
+  },
+  "dependencies": {
+    "@canopytrace/shared": "workspace:*"
+  },
+  "devDependencies": {
+    "@canopytrace/config-eslint": "workspace:*",
+    "@canopytrace/config-ts": "workspace:*",
+    "eslint": "^9.15.0",
+    "prettier": "^3.3.3",
+    "typescript": "^5.6.3",
+    "vitest": "^2.1.5"
+  }
+}

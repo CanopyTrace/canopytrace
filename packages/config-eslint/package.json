@@ -1,0 +1,25 @@
+{
+  "name": "@canopytrace/config-eslint",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Shared ESLint configuration for CanopyTrace",
+  "main": "index.js",
+  "scripts": {
+    "lint": "echo 'No lint target for config-eslint'",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "typecheck": "echo 'No typecheck target for config-eslint'",
+    "test": "echo 'No test target for config-eslint'",
+    "build": "echo 'No build target for config-eslint'"
+  },
+  "dependencies": {
+    "@typescript-eslint/eslint-plugin": "^8.15.0",
+    "@typescript-eslint/parser": "^8.15.0",
+    "eslint": "^9.15.0",
+    "eslint-config-prettier": "^9.1.0",
+    "eslint-plugin-import": "^2.31.0"
+  },
+  "devDependencies": {
+    "prettier": "^3.3.3"
+  }
+}

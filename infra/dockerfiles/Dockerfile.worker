@@ -1,0 +1,33 @@
+# CanopyTrace Worker — multi-stage Docker build
+
+FROM node:20-alpine AS base
+RUN corepack enable && corepack prepare pnpm@9.15.0 --activate
+WORKDIR /app
+
+FROM base AS deps
+COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./
+COPY packages/config-ts/package.json ./packages/config-ts/
+COPY packages/config-eslint/package.json ./packages/config-eslint/
+COPY packages/shared/package.json ./packages/shared/
+COPY apps/ct-worker/package.json ./apps/ct-worker/
+RUN pnpm install --frozen-lockfile
+
+FROM deps AS build
+COPY packages/ ./packages/
+COPY apps/ct-worker/ ./apps/ct-worker/
+RUN pnpm --filter @canopytrace/shared build
+RUN pnpm --filter @canopytrace/ct-worker build
+
+FROM node:20-alpine AS runner
+RUN corepack enable && corepack prepare pnpm@9.15.0 --activate
+WORKDIR /app
+
+ENV NODE_ENV=production
+
+COPY --from=build /app/apps/ct-worker/dist ./dist
+COPY --from=build /app/packages/shared/dist ./node_modules/@canopytrace/shared/dist
+COPY --from=build /app/node_modules ./node_modules
+
+USER node
+
+CMD ["node", "dist/main.js"]

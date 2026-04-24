@@ -1,0 +1,105 @@
+---
+# CanopyTrace — local development compose
+# Usage:  docker compose up
+# Secrets: copy infra/.env.example to infra/.env and fill in values.
+#          NEVER commit a populated .env file.
+
+name: canopytrace
+
+services:
+  # ---------------------------------------------------------------------------
+  # PostgreSQL 16 — primary data store
+  # ---------------------------------------------------------------------------
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./postgres/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - ct-internal
+
+  # ---------------------------------------------------------------------------
+  # MinIO — S3-compatible object storage (COAs, evidence)
+  # ---------------------------------------------------------------------------
+  minio:
+    image: minio/minio:latest
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+    ports:
+      - "9000:9000"   # S3 API
+      - "9001:9001"   # Web console
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - ct-internal
+
+  # ---------------------------------------------------------------------------
+  # ct-api — REST API (stub; full image wired in Phase 2)
+  # ---------------------------------------------------------------------------
+  ct-api:
+    build:
+      context: ..
+      dockerfile: infra/dockerfiles/Dockerfile.api
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      NODE_ENV: development
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      MINIO_ENDPOINT: http://minio:9000
+      MINIO_ACCESS_KEY: ${MINIO_ROOT_USER}
+      MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD}
+      PORT: "3001"
+    ports:
+      - "3001:3001"
+    networks:
+      - ct-internal
+
+  # ---------------------------------------------------------------------------
+  # ct-worker — background job processor (stub; full image wired in Phase 3)
+  # ---------------------------------------------------------------------------
+  ct-worker:
+    build:
+      context: ..
+      dockerfile: infra/dockerfiles/Dockerfile.worker
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      NODE_ENV: development
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      MINIO_ENDPOINT: http://minio:9000
+      MINIO_ACCESS_KEY: ${MINIO_ROOT_USER}
+      MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD}
+    networks:
+      - ct-internal
+
+volumes:
+  postgres_data:
+  minio_data:
+
+networks:
+  ct-internal:
+    driver: bridge

@@ -1,0 +1,12 @@
+{
+  "extends": "@canopytrace/config-ts/tsconfig.nextjs.json",
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["./src/*"],
+      "@canopytrace/shared": ["../../packages/shared/src/index.ts"]
+    }
+  },
+  "include": ["src", "next.config.ts", "next-env.d.ts"],
+  "exclude": ["node_modules", ".next", "**/*.test.ts", "**/*.test.tsx"]
+}

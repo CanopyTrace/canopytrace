@@ -1,0 +1,17 @@
+{
+  "name": "@canopytrace/config-ts",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Shared TypeScript configuration for CanopyTrace",
+  "scripts": {
+    "lint": "echo 'No lint target for config-ts'",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "typecheck": "echo 'No typecheck target for config-ts'",
+    "test": "echo 'No test target for config-ts'",
+    "build": "echo 'No build target for config-ts'"
+  },
+  "devDependencies": {
+    "prettier": "^3.3.3"
+  }
+}

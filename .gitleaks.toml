@@ -1,0 +1,30 @@
+# gitleaks configuration for CanopyTrace
+# Docs: https://github.com/gitleaks/gitleaks
+
+title = "CanopyTrace secret scan"
+
+[extend]
+# Extend from the default ruleset
+useDefault = true
+
+[[rules]]
+id = "metrc-api-key"
+description = "Metrc API key"
+regex = '''(?i)metrc[_\-]?(api[_\-]?)?key['":\s=]+[A-Za-z0-9+/=]{20,}'''
+tags = ["metrc", "api-key"]
+
+[[rules]]
+id = "jwt-secret-inline"
+description = "Inline JWT secret"
+regex = '''(?i)jwt[_\-]?secret['":\s=]+[A-Za-z0-9+/=_\-]{16,}'''
+tags = ["jwt", "secret"]
+
+[allowlist]
+description = "Allowlist for intentional non-secret patterns"
+paths = [
+  "infra/.env.example",   # example values are placeholders, not real secrets
+  ".gitignore",
+]
+regexes = [
+  "change_me_never_commit",   # explicit placeholder text in .env.example
+]

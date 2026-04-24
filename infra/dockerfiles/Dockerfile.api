@@ -1,0 +1,46 @@
+# CanopyTrace API — multi-stage Docker build
+# Stage 1 builds TypeScript; Stage 2 runs the compiled output.
+# No secrets are baked into the image — all config via environment variables.
+
+FROM node:20-alpine AS base
+RUN corepack enable && corepack prepare pnpm@9.15.0 --activate
+WORKDIR /app
+
+# ---------------------------------------------------------------------------
+# Stage: deps — install all workspace dependencies
+# ---------------------------------------------------------------------------
+FROM base AS deps
+COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./
+COPY packages/config-ts/package.json ./packages/config-ts/
+COPY packages/config-eslint/package.json ./packages/config-eslint/
+COPY packages/shared/package.json ./packages/shared/
+COPY apps/ct-api/package.json ./apps/ct-api/
+RUN pnpm install --frozen-lockfile
+
+# ---------------------------------------------------------------------------
+# Stage: build — compile TypeScript
+# ---------------------------------------------------------------------------
+FROM deps AS build
+COPY packages/ ./packages/
+COPY apps/ct-api/ ./apps/ct-api/
+RUN pnpm --filter @canopytrace/shared build
+RUN pnpm --filter @canopytrace/ct-api build
+
+# ---------------------------------------------------------------------------
+# Stage: runner — minimal production image
+# ---------------------------------------------------------------------------
+FROM node:20-alpine AS runner
+RUN corepack enable && corepack prepare pnpm@9.15.0 --activate
+WORKDIR /app
+
+ENV NODE_ENV=production
+
+# Only copy what the runtime needs
+COPY --from=build /app/apps/ct-api/dist ./dist
+COPY --from=build /app/packages/shared/dist ./node_modules/@canopytrace/shared/dist
+COPY --from=build /app/node_modules ./node_modules
+
+EXPOSE 3001
+USER node
+
+CMD ["node", "dist/main.js"]
