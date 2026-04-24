@@ -1,10 +1,6 @@
 type Level = "info" | "warn" | "error" | "debug";
 
-function write(
-  level: Level,
-  message: string,
-  extra?: Record<string, unknown>,
-): void {
+function write(level: Level, message: string, extra?: Record<string, unknown>): void {
   const line = JSON.stringify({
     ts: new Date().toISOString(),
     level,

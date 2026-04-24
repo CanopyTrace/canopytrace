@@ -1,4 +1,5 @@
 import * as http from "node:http";
+
 import { logger } from "./logger";
 
 const SERVICE = "ct-worker";

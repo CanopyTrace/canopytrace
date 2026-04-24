@@ -36,8 +36,7 @@ export class JsonLogger implements LoggerService {
       level,
       pid: process.pid,
       ...(context !== undefined ? { context } : {}),
-      message:
-        typeof message === "string" ? message : JSON.stringify(message),
+      message: typeof message === "string" ? message : JSON.stringify(message),
     });
 
     const stream =
