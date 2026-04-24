@@ -1,14 +1,23 @@
-import * as http from "node:http";
+import "reflect-metadata";
+import { NestFactory } from "@nestjs/core";
+import { AppModule } from "./app.module";
+import { JsonLogger } from "./logger";
 
-const PORT = Number(process.env["PORT"] ?? 3001);
+async function bootstrap(): Promise<void> {
+  const logger = new JsonLogger();
+  const app = await NestFactory.create(AppModule, { logger });
 
-export function createServer(): http.Server {
-  return http.createServer((_req, res) => {
-    res.writeHead(200, { "Content-Type": "application/json" });
-    res.end(JSON.stringify({ status: "ok", service: "ct-api" }));
-  });
+  const port = Number(process.env["PORT"] ?? 3001);
+  await app.listen(port);
 }
 
-if (require.main === module) {
-  createServer().listen(PORT);
-}
+bootstrap().catch((err: unknown) => {
+  process.stderr.write(
+    JSON.stringify({
+      ts: new Date().toISOString(),
+      level: "fatal",
+      message: err instanceof Error ? err.message : String(err),
+    }) + "\n",
+  );
+  process.exit(1);
+});
