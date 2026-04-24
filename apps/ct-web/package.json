@@ -3,6 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "description": "CanopyTrace operator UI — Next.js",
+  "main": "dist/index.js",
   "scripts": {
     "lint": "eslint src --max-warnings 0",
     "format": "prettier --write . --ignore-path ../../.prettierignore",
@@ -10,9 +11,10 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "build": "echo 'Next.js build placeholder — wired in Phase 7'",
+    "build": "tsc",
+    "start": "node dist/index.js",
     "dev": "echo 'Next.js dev server placeholder — wired in Phase 7'",
-    "clean": "rm -rf .next"
+    "clean": "rm -rf dist"
   },
   "dependencies": {
     "@canopytrace/shared": "workspace:*"

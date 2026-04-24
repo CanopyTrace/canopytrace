@@ -1,0 +1,29 @@
+FROM node:20-alpine AS base
+RUN corepack enable && corepack prepare pnpm@9.15.0 --activate
+WORKDIR /app
+
+FROM base AS deps
+COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./
+COPY packages/config-ts/package.json ./packages/config-ts/
+COPY packages/config-eslint/package.json ./packages/config-eslint/
+COPY packages/shared/package.json ./packages/shared/
+COPY apps/ct-web/package.json ./apps/ct-web/
+RUN pnpm install --frozen-lockfile
+
+FROM deps AS build
+COPY packages/ ./packages/
+COPY apps/ct-web/ ./apps/ct-web/
+RUN pnpm --filter @canopytrace/shared build
+RUN pnpm --filter @canopytrace/ct-web build
+
+FROM build AS deploy
+RUN pnpm --filter @canopytrace/ct-web deploy --prod /deploy
+
+FROM node:20-alpine AS runner
+RUN npm install -g npm@latest
+WORKDIR /app
+ENV NODE_ENV=production
+COPY --from=deploy /deploy ./
+EXPOSE 3000
+USER node
+CMD ["node", "dist/index.js"]

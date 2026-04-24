@@ -1,10 +1,13 @@
-/**
- * CanopyTrace Worker entry point.
- *
- * Placeholder for Story 0.1.1 (monorepo bootstrap).
- * Full outbox dispatcher and job processor implemented in Phase 3 (Epic 3.x).
- */
+import * as http from "node:http";
 
-export function placeholder(): string {
-  return "ct-worker";
-}
+const HEALTH_PORT = Number(process.env["HEALTH_PORT"] ?? 3002);
+
+const server = http.createServer((_req, res) => {
+  res.writeHead(200, { "Content-Type": "application/json" });
+  res.end(JSON.stringify({ status: "ok", service: "ct-worker" }));
+});
+
+server.listen(HEALTH_PORT, "127.0.0.1", () => {
+  console.log(`ct-worker placeholder: health on :${HEALTH_PORT}`);
+  console.log("ct-worker: outbox poll loop — full implementation in Epic 3");
+});

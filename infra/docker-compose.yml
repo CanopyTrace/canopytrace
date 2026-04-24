@@ -54,7 +54,7 @@ services:
       - ct-internal
 
   # ---------------------------------------------------------------------------
-  # ct-api — REST API (stub; full image wired in Phase 2)
+  # ct-api — REST API (stub; full NestJS wired in Epic 2)
   # ---------------------------------------------------------------------------
   ct-api:
     build:
@@ -64,20 +64,29 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      minio:
+        condition: service_healthy
     environment:
       NODE_ENV: development
       DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
       MINIO_ENDPOINT: http://minio:9000
       MINIO_ACCESS_KEY: ${MINIO_ROOT_USER}
       MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD}
+      JWT_SECRET: ${JWT_SECRET}
       PORT: "3001"
     ports:
       - "3001:3001"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO /dev/null http://localhost:3001/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
     networks:
       - ct-internal
 
   # ---------------------------------------------------------------------------
-  # ct-worker — background job processor (stub; full image wired in Phase 3)
+  # ct-worker — background job processor (stub; full implementation in Epic 3)
   # ---------------------------------------------------------------------------
   ct-worker:
     build:
@@ -87,12 +96,48 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      minio:
+        condition: service_healthy
     environment:
       NODE_ENV: development
       DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
       MINIO_ENDPOINT: http://minio:9000
       MINIO_ACCESS_KEY: ${MINIO_ROOT_USER}
       MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD}
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO /dev/null http://localhost:3002/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    networks:
+      - ct-internal
+
+  # ---------------------------------------------------------------------------
+  # ct-web — operator UI (stub; Next.js wired in Phase 7)
+  # ---------------------------------------------------------------------------
+  ct-web:
+    build:
+      context: ..
+      dockerfile: infra/dockerfiles/Dockerfile.web
+    restart: unless-stopped
+    depends_on:
+      ct-api:
+        condition: service_healthy
+    environment:
+      NODE_ENV: development
+      PORT: "3000"
+      NEXTAUTH_URL: http://localhost:3000
+      NEXTAUTH_SECRET: ${NEXTAUTH_SECRET}
+      NEXT_PUBLIC_API_URL: http://localhost:3001
+    ports:
+      - "3000:3000"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO /dev/null http://localhost:3000/"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
     networks:
       - ct-internal
 

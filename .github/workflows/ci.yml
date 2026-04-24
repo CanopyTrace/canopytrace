@@ -215,3 +215,18 @@ jobs:
           format: table
           exit-code: "1"
           severity: CRITICAL,HIGH
+
+      - name: Build web image
+        run: |
+          docker build \
+            -f infra/dockerfiles/Dockerfile.web \
+            -t canopytrace/ct-web:ci \
+            .
+
+      - name: Scan web image with Trivy
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: canopytrace/ct-web:ci
+          format: table
+          exit-code: "1"
+          severity: CRITICAL,HIGH
