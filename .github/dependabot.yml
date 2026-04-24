@@ -1,0 +1,38 @@
+version: 2
+updates:
+  # pnpm workspace — Dependabot uses the npm ecosystem for pnpm
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 10
+    groups:
+      eslint:
+        patterns:
+          - "eslint*"
+          - "@eslint/*"
+          - "@typescript-eslint/*"
+      typescript:
+        patterns:
+          - "typescript"
+      vitest:
+        patterns:
+          - "vitest"
+          - "@vitest/*"
+
+  # GitHub Actions pinned versions
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+
+  # Docker base images
+  - package-ecosystem: docker
+    directory: /infra/dockerfiles
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
