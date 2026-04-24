@@ -27,6 +27,9 @@ importers:
       '@canopytrace/config-ts':
         specifier: workspace:*
         version: link:../../packages/config-ts
+      '@types/node':
+        specifier: ^20.0.0
+        version: 20.19.39
       eslint:
         specifier: ^9.15.0
         version: 9.39.4
@@ -80,6 +83,9 @@ importers:
       '@canopytrace/config-ts':
         specifier: workspace:*
         version: link:../../packages/config-ts
+      '@types/node':
+        specifier: ^20.0.0
+        version: 20.19.39
       eslint:
         specifier: ^9.15.0
         version: 9.39.4
