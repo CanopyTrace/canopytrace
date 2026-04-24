@@ -2,7 +2,7 @@
 # Stage 1 builds TypeScript; Stage 2 runs the compiled output.
 # No secrets are baked into the image — all config via environment variables.
 
-FROM node:20-alpine AS base
+FROM node:25-alpine AS base
 RUN corepack enable && corepack prepare pnpm@9.15.0 --activate
 WORKDIR /app
 
@@ -35,7 +35,7 @@ RUN pnpm --filter @canopytrace/ct-api deploy --prod /deploy
 # ---------------------------------------------------------------------------
 # Stage: runner — minimal production image
 # ---------------------------------------------------------------------------
-FROM node:20-alpine AS runner
+FROM node:25-alpine AS runner
 RUN npm install -g npm@latest
 WORKDIR /app
 
