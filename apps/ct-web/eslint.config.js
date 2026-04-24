@@ -3,6 +3,7 @@ const path = require("path");
 const { nextjsConfig } = require("@canopytrace/config-eslint");
 
 module.exports = [
+  { ignores: ["dist/**", "node_modules/**"] },
   ...nextjsConfig,
   {
     files: ["**/*.ts", "**/*.tsx"],
