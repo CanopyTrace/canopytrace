@@ -62,12 +62,13 @@ describe("migration smoke tests", () => {
     const { rows } = await client.query<{ name: string }>(
       "SELECT name FROM public.schema_migrations ORDER BY run_on",
     );
-    expect(rows).toHaveLength(5);
+    expect(rows).toHaveLength(6);
     expect(rows[0]?.name).toMatch(/baseline/);
     expect(rows[1]?.name).toMatch(/identity_role/);
     expect(rows[2]?.name).toMatch(/module_enablement/);
     expect(rows[3]?.name).toMatch(/document_tables/);
     expect(rows[4]?.name).toMatch(/compliance_tables/);
+    expect(rows[5]?.name).toMatch(/tenant_org_scoping/);
   });
 
   it.each(REPRESENTATIVE_TABLES)("cannabis.%s exists", async (table) => {
@@ -819,6 +820,278 @@ describe("migration smoke tests", () => {
           [regulatorySystemId],
         ),
       ).rejects.toThrow();
+    });
+  });
+
+  describe("Story 1.2.5 — tenant/org scoping columns on high-volume tables", () => {
+    let tenantId: string;
+    let orgId: string;
+    let facilityId: string;
+    let employeeId: string;
+    let terminalId: string;
+    let lotId: string;
+
+    beforeAll(async () => {
+      const {
+        rows: [t],
+      } = await client.query<{ id: string }>(
+        "INSERT INTO cannabis.tenant (name) VALUES ('scope-test') RETURNING id",
+      );
+      tenantId = t!.id;
+
+      const {
+        rows: [o],
+      } = await client.query<{ id: string }>(
+        "INSERT INTO cannabis.organization (tenant_id, legal_name) VALUES ($1, 'Scope Org') RETURNING id",
+        [tenantId],
+      );
+      orgId = o!.id;
+
+      const {
+        rows: [j],
+      } = await client.query<{ id: string }>(
+        "INSERT INTO cannabis.jurisdiction (code, name) VALUES ('SC', 'Scope Jurisdiction') RETURNING id",
+      );
+
+      const {
+        rows: [f],
+      } = await client.query<{ id: string }>(
+        "INSERT INTO cannabis.facility (organization_id, jurisdiction_id, name, facility_type) VALUES ($1, $2, 'Scope Facility', 'retail') RETURNING id",
+        [orgId, j!.id],
+      );
+      facilityId = f!.id;
+
+      const {
+        rows: [e],
+      } = await client.query<{ id: string }>(
+        "INSERT INTO cannabis.employee (facility_id, employee_no, full_name) VALUES ($1, 'SC-EMP-001', 'Scope Employee') RETURNING id",
+        [facilityId],
+      );
+      employeeId = e!.id;
+
+      const {
+        rows: [d],
+      } = await client.query<{ id: string }>(
+        "INSERT INTO cannabis.device_terminal (facility_id, device_code, device_type) VALUES ($1, 'SC-POS-001', 'pos') RETURNING id",
+        [facilityId],
+      );
+      terminalId = d!.id;
+
+      const {
+        rows: [ml],
+      } = await client.query<{ id: string }>(
+        `INSERT INTO cannabis.material_lot
+           (facility_id, tenant_id, organization_id, lot_code, lot_kind, uom)
+         VALUES ($1, $2, $3, 'SC-LOT-001', 'biomass', 'g')
+         RETURNING id`,
+        [facilityId, tenantId, orgId],
+      );
+      lotId = ml!.id;
+    });
+
+    // -------------------------------------------------------------------------
+    // material_lot
+    // -------------------------------------------------------------------------
+
+    it("material_lot accepts tenant_id and organization_id", async () => {
+      const { rows } = await client.query<{
+        tenant_id: string;
+        organization_id: string;
+      }>("SELECT tenant_id, organization_id FROM cannabis.material_lot WHERE id = $1", [
+        lotId,
+      ]);
+      expect(rows[0]?.tenant_id).toBe(tenantId);
+      expect(rows[0]?.organization_id).toBe(orgId);
+    });
+
+    it("material_lot rejects null tenant_id", async () => {
+      await expect(
+        client.query(
+          "INSERT INTO cannabis.material_lot (facility_id, organization_id, lot_code, lot_kind, uom) VALUES ($1, $2, 'SC-LOT-NULLT', 'biomass', 'g')",
+          [facilityId, orgId],
+        ),
+      ).rejects.toThrow();
+    });
+
+    it("material_lot rejects null organization_id", async () => {
+      await expect(
+        client.query(
+          "INSERT INTO cannabis.material_lot (facility_id, tenant_id, lot_code, lot_kind, uom) VALUES ($1, $2, 'SC-LOT-NULLO', 'biomass', 'g')",
+          [facilityId, tenantId],
+        ),
+      ).rejects.toThrow();
+    });
+
+    it("material_lot rejects non-existent tenant_id (FK)", async () => {
+      await expect(
+        client.query(
+          "INSERT INTO cannabis.material_lot (facility_id, tenant_id, organization_id, lot_code, lot_kind, uom) VALUES ($1, '00000000-0000-0000-0000-000000000099', $2, 'SC-LOT-BADFK', 'biomass', 'g')",
+          [facilityId, orgId],
+        ),
+      ).rejects.toThrow();
+    });
+
+    // -------------------------------------------------------------------------
+    // package
+    // -------------------------------------------------------------------------
+
+    it("package accepts tenant_id and organization_id", async () => {
+      const { rows } = await client.query<{
+        tenant_id: string;
+        organization_id: string;
+      }>(
+        `INSERT INTO cannabis.package
+           (facility_id, tenant_id, organization_id, material_lot_id, package_code, uom)
+         VALUES ($1, $2, $3, $4, 'SC-PKG-001', 'g')
+         RETURNING tenant_id, organization_id`,
+        [facilityId, tenantId, orgId, lotId],
+      );
+      expect(rows[0]?.tenant_id).toBe(tenantId);
+      expect(rows[0]?.organization_id).toBe(orgId);
+    });
+
+    it("package rejects null tenant_id", async () => {
+      await expect(
+        client.query(
+          "INSERT INTO cannabis.package (facility_id, organization_id, material_lot_id, package_code, uom) VALUES ($1, $2, $3, 'SC-PKG-NULLT', 'g')",
+          [facilityId, orgId, lotId],
+        ),
+      ).rejects.toThrow();
+    });
+
+    it("package rejects null organization_id", async () => {
+      await expect(
+        client.query(
+          "INSERT INTO cannabis.package (facility_id, tenant_id, material_lot_id, package_code, uom) VALUES ($1, $2, $3, 'SC-PKG-NULLO', 'g')",
+          [facilityId, tenantId, lotId],
+        ),
+      ).rejects.toThrow();
+    });
+
+    // -------------------------------------------------------------------------
+    // sale
+    // -------------------------------------------------------------------------
+
+    it("sale accepts tenant_id and organization_id", async () => {
+      const { rows } = await client.query<{
+        tenant_id: string;
+        organization_id: string;
+      }>(
+        `INSERT INTO cannabis.sale
+           (facility_id, tenant_id, organization_id,
+            employee_id, device_terminal_id, receipt_no)
+         VALUES ($1, $2, $3, $4, $5, 'SC-RCPT-001')
+         RETURNING tenant_id, organization_id`,
+        [facilityId, tenantId, orgId, employeeId, terminalId],
+      );
+      expect(rows[0]?.tenant_id).toBe(tenantId);
+      expect(rows[0]?.organization_id).toBe(orgId);
+    });
+
+    it("sale rejects null tenant_id", async () => {
+      await expect(
+        client.query(
+          "INSERT INTO cannabis.sale (facility_id, organization_id, employee_id, device_terminal_id, receipt_no) VALUES ($1, $2, $3, $4, 'SC-RCPT-NULLT')",
+          [facilityId, orgId, employeeId, terminalId],
+        ),
+      ).rejects.toThrow();
+    });
+
+    it("sale rejects null organization_id", async () => {
+      await expect(
+        client.query(
+          "INSERT INTO cannabis.sale (facility_id, tenant_id, employee_id, device_terminal_id, receipt_no) VALUES ($1, $2, $3, $4, 'SC-RCPT-NULLO')",
+          [facilityId, tenantId, employeeId, terminalId],
+        ),
+      ).rejects.toThrow();
+    });
+
+    // -------------------------------------------------------------------------
+    // audit_event
+    // -------------------------------------------------------------------------
+
+    it("audit_event accepts tenant_id and organization_id", async () => {
+      const { rows } = await client.query<{
+        tenant_id: string;
+        organization_id: string;
+      }>(
+        `INSERT INTO cannabis.audit_event
+           (facility_id, tenant_id, organization_id,
+            object_type, object_id, action)
+         VALUES ($1, $2, $3, 'material_lot', $4, 'create')
+         RETURNING tenant_id, organization_id`,
+        [facilityId, tenantId, orgId, lotId],
+      );
+      expect(rows[0]?.tenant_id).toBe(tenantId);
+      expect(rows[0]?.organization_id).toBe(orgId);
+    });
+
+    it("audit_event rejects null tenant_id", async () => {
+      await expect(
+        client.query(
+          "INSERT INTO cannabis.audit_event (facility_id, organization_id, object_type, object_id, action) VALUES ($1, $2, 'material_lot', $3, 'read')",
+          [facilityId, orgId, lotId],
+        ),
+      ).rejects.toThrow();
+    });
+
+    it("audit_event rejects null organization_id", async () => {
+      await expect(
+        client.query(
+          "INSERT INTO cannabis.audit_event (facility_id, tenant_id, object_type, object_id, action) VALUES ($1, $2, 'material_lot', $3, 'read')",
+          [facilityId, tenantId, lotId],
+        ),
+      ).rejects.toThrow();
+    });
+
+    // -------------------------------------------------------------------------
+    // Denormalized values match the facility lineage
+    // -------------------------------------------------------------------------
+
+    it("denormalized org/tenant on material_lot matches the facility join", async () => {
+      const { rows } = await client.query<{
+        direct_tenant: string;
+        direct_org: string;
+        join_tenant: string;
+        join_org: string;
+      }>(
+        `SELECT
+           ml.tenant_id       AS direct_tenant,
+           ml.organization_id AS direct_org,
+           o.tenant_id        AS join_tenant,
+           f.organization_id  AS join_org
+         FROM cannabis.material_lot ml
+         JOIN cannabis.facility     f ON f.id = ml.facility_id
+         JOIN cannabis.organization o ON o.id = f.organization_id
+         WHERE ml.id = $1`,
+        [lotId],
+      );
+      expect(rows[0]?.direct_tenant).toBe(rows[0]?.join_tenant);
+      expect(rows[0]?.direct_org).toBe(rows[0]?.join_org);
+    });
+
+    // -------------------------------------------------------------------------
+    // Skipped tables must NOT carry the new columns
+    // -------------------------------------------------------------------------
+
+    it("outbox_event has no tenant_id column", async () => {
+      const { rowCount } = await client.query(
+        `SELECT 1 FROM information_schema.columns
+         WHERE table_schema = 'cannabis'
+           AND table_name   = 'outbox_event'
+           AND column_name  = 'tenant_id'`,
+      );
+      expect(rowCount).toBe(0);
+    });
+
+    it("regulatory_sync_job has no tenant_id column", async () => {
+      const { rowCount } = await client.query(
+        `SELECT 1 FROM information_schema.columns
+         WHERE table_schema = 'cannabis'
+           AND table_name   = 'regulatory_sync_job'
+           AND column_name  = 'tenant_id'`,
+      );
+      expect(rowCount).toBe(0);
     });
   });
 });
