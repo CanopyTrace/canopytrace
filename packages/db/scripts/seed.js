@@ -34,6 +34,17 @@ const S = {
   facility_license: "10000000-0000-0000-0000-000000000006",
   regulatory_system_metrc: "10000000-0000-0000-0000-000000000007",
   facility_reg_binding: "10000000-0000-0000-0000-000000000008",
+  // inventory
+  location_grow_room_a: "10000000-0000-0000-0000-000000000009",
+  location_vault: "10000000-0000-0000-0000-000000000010",
+  strain_blue_dream: "10000000-0000-0000-0000-000000000011",
+  product_def_flower_bulk: "10000000-0000-0000-0000-000000000012",
+  product_def_flower_jar: "10000000-0000-0000-0000-000000000013",
+  harvest_lot: "10000000-0000-0000-0000-000000000014",
+  material_lot: "10000000-0000-0000-0000-000000000015",
+  package: "10000000-0000-0000-0000-000000000016",
+  employee: "10000000-0000-0000-0000-000000000017",
+  device_terminal: "10000000-0000-0000-0000-000000000018",
 };
 
 // ---------------------------------------------------------------------------
@@ -218,6 +229,144 @@ async function runSeed(client) {
   }
 
   log("[seed] Baseline seed complete.");
+
+  // =========================================================================
+  // Inventory seed — Story 1.3.2
+  // NY cultivation facility: locations → strain → product defs →
+  //   harvest lot → material lot → package → employee → device terminal
+  // =========================================================================
+  log("[seed] Starting inventory seed…");
+
+  // 9. Locations
+  await ensureById(client, "location", {
+    id: S.location_grow_room_a,
+    facility_id: S.facility,
+    code: "LOC-GR-A",
+    name: "Grow Room A",
+    location_type: "canopy",
+    active: true,
+  });
+
+  await ensureById(client, "location", {
+    id: S.location_vault,
+    facility_id: S.facility,
+    code: "LOC-VAULT-01",
+    name: "Secure Vault 01",
+    location_type: "vault",
+    active: true,
+  });
+
+  // 10. Strain
+  await ensureById(client, "strain", {
+    id: S.strain_blue_dream,
+    facility_id: S.facility,
+    name: "Blue Dream",
+    cultivar_type: "hybrid",
+    breeder: "Canopy Genetics",
+    lineage_text: "Blueberry × Haze",
+    active: true,
+  });
+
+  // 11. Product definitions
+  await ensureById(client, "product_definition", {
+    id: S.product_def_flower_bulk,
+    facility_id: S.facility,
+    sku: "FLOUR-BD-BULK",
+    name: "Blue Dream Flower – Bulk",
+    category: "flower",
+    subcategory: "bulk",
+    default_uom: "g",
+    retail_ready: false,
+    active: true,
+  });
+
+  await ensureById(client, "product_definition", {
+    id: S.product_def_flower_jar,
+    facility_id: S.facility,
+    sku: "FLOUR-BD-3G5",
+    name: "Blue Dream 3.5g Jar",
+    category: "flower",
+    subcategory: "pre-packaged",
+    default_uom: "ea",
+    retail_ready: true,
+    net_weight_g: "3.500000",
+    thc_mg: "87.500",
+    cbd_mg: "3.500",
+    active: true,
+  });
+
+  // 12. Harvest lot
+  await ensureById(client, "harvest_lot", {
+    id: S.harvest_lot,
+    facility_id: S.facility,
+    strain_id: S.strain_blue_dream,
+    location_id: S.location_grow_room_a,
+    harvest_code: "HRV-2025-BD-001",
+    harvested_on: "2025-06-15",
+    wet_weight: "5000.000000",
+    dry_weight: "1200.000000",
+    status: "closed",
+  });
+
+  // 13. Material lot (biomass from that harvest)
+  await ensureById(client, "material_lot", {
+    id: S.material_lot,
+    tenant_id: S.tenant,
+    organization_id: S.organization,
+    facility_id: S.facility,
+    location_id: S.location_vault,
+    product_definition_id: S.product_def_flower_bulk,
+    source_harvest_lot_id: S.harvest_lot,
+    lot_code: "MAT-2025-BD-001",
+    lot_kind: "biomass",
+    current_qty: "1200.000000",
+    reserved_qty: "3.500000",
+    uom: "g",
+    status: "active",
+    produced_at: "2025-06-22T00:00:00Z",
+  });
+
+  // 14. Package (single retail jar pulled from material lot)
+  await ensureById(client, "package", {
+    id: S.package,
+    tenant_id: S.tenant,
+    organization_id: S.organization,
+    facility_id: S.facility,
+    material_lot_id: S.material_lot,
+    product_definition_id: S.product_def_flower_jar,
+    location_id: S.location_vault,
+    package_code: "PKG-2025-BD-0001",
+    package_kind: "flower_jar",
+    current_qty: "1.000000",
+    reserved_qty: "0.000000",
+    uom: "ea",
+    packaged_at: "2025-06-25T00:00:00Z",
+    package_status: "active",
+    retail_ready: true,
+    finished_goods: true,
+  });
+
+  // 15. Employee
+  await ensureById(client, "employee", {
+    id: S.employee,
+    facility_id: S.facility,
+    employee_no: "EMP-001",
+    full_name: "Jordan Rivera",
+    email: "j.rivera@canopydemo.com",
+    status: "active",
+  });
+
+  // 16. Device terminal
+  await ensureById(client, "device_terminal", {
+    id: S.device_terminal,
+    facility_id: S.facility,
+    device_code: "TERM-POS-001",
+    device_type: "pos",
+    hostname: "ct-pos-01.local",
+    status: "active",
+  });
+
+  log("[seed] Inventory seed complete.");
 }
 
 // ---------------------------------------------------------------------------
