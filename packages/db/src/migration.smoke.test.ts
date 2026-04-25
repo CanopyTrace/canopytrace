@@ -30,6 +30,9 @@ const REPRESENTATIVE_TABLES = [
   "module_setting",
   "document_asset",
   "document_binding",
+  "compliance_exception",
+  "compliance_task",
+  "policy_pack_registry",
 ] as const;
 
 describe("migration smoke tests", () => {
@@ -59,11 +62,12 @@ describe("migration smoke tests", () => {
     const { rows } = await client.query<{ name: string }>(
       "SELECT name FROM public.schema_migrations ORDER BY run_on",
     );
-    expect(rows).toHaveLength(4);
+    expect(rows).toHaveLength(5);
     expect(rows[0]?.name).toMatch(/baseline/);
     expect(rows[1]?.name).toMatch(/identity_role/);
     expect(rows[2]?.name).toMatch(/module_enablement/);
     expect(rows[3]?.name).toMatch(/document_tables/);
+    expect(rows[4]?.name).toMatch(/compliance_tables/);
   });
 
   it.each(REPRESENTATIVE_TABLES)("cannabis.%s exists", async (table) => {
@@ -616,6 +620,205 @@ describe("migration smoke tests", () => {
           [assetId, objectId, policy],
         ),
       ).resolves.toMatchObject({ rowCount: 1 });
+    });
+  });
+
+  describe("Story 1.2.4 — compliance exception, task, and policy pack registry", () => {
+    let tenantId: string;
+    let facilityId: string;
+    let userId: string;
+    let roleDefId: string;
+    let regulatorySystemId: string;
+    let jurisdictionId: string;
+    let exceptionId: string;
+
+    beforeAll(async () => {
+      const {
+        rows: [t],
+      } = await client.query<{ id: string }>(
+        "INSERT INTO cannabis.tenant (name) VALUES ('comp-test') RETURNING id",
+      );
+      tenantId = t!.id;
+
+      const {
+        rows: [o],
+      } = await client.query<{ id: string }>(
+        "INSERT INTO cannabis.organization (tenant_id, legal_name) VALUES ($1, 'Comp Org') RETURNING id",
+        [tenantId],
+      );
+
+      const {
+        rows: [j],
+      } = await client.query<{ id: string }>(
+        "INSERT INTO cannabis.jurisdiction (code, name) VALUES ('VV', 'Comp Jurisdiction') RETURNING id",
+      );
+      jurisdictionId = j!.id;
+
+      const {
+        rows: [f],
+      } = await client.query<{ id: string }>(
+        "INSERT INTO cannabis.facility (organization_id, jurisdiction_id, name, facility_type) VALUES ($1, $2, 'Comp Facility', 'retail') RETURNING id",
+        [o!.id, jurisdictionId],
+      );
+      facilityId = f!.id;
+
+      const {
+        rows: [u],
+      } = await client.query<{ id: string }>(
+        "INSERT INTO cannabis.app_user (tenant_id, email, full_name) VALUES ($1, 'comp@test.example', 'Comp User') RETURNING id",
+        [tenantId],
+      );
+      userId = u!.id;
+
+      const {
+        rows: [r],
+      } = await client.query<{ id: string }>(
+        "INSERT INTO cannabis.role_definition (tenant_id, name) VALUES ($1, 'comp-manager') RETURNING id",
+        [tenantId],
+      );
+      roleDefId = r!.id;
+
+      const {
+        rows: [rs],
+      } = await client.query<{ id: string }>(
+        "INSERT INTO cannabis.regulatory_system (code, name) VALUES ('comp-test-metrc', 'Comp Test Metrc') RETURNING id",
+      );
+      regulatorySystemId = rs!.id;
+    });
+
+    // -------------------------------------------------------------------------
+    // compliance_exception tests
+    // -------------------------------------------------------------------------
+
+    it("compliance_exception accepts system-generated exception", async () => {
+      const {
+        rows: [e],
+      } = await client.query<{ id: string; source: string }>(
+        `INSERT INTO cannabis.compliance_exception
+           (facility_id, exception_type, severity, title, source)
+         VALUES ($1, 'missing_coa', 'critical', 'Missing COA on harvest lot', 'system')
+         RETURNING id, source`,
+        [facilityId],
+      );
+      exceptionId = e!.id;
+      expect(e!.source).toBe("system");
+    });
+
+    it("compliance_exception accepts operator-created exception", async () => {
+      await expect(
+        client.query(
+          `INSERT INTO cannabis.compliance_exception
+             (facility_id, exception_type, severity, title, source)
+           VALUES ($1, 'expired_license', 'warning', 'License renewal overdue', 'operator')
+           RETURNING id`,
+          [facilityId],
+        ),
+      ).resolves.toMatchObject({ rowCount: 1 });
+    });
+
+    it("compliance_exception source defaults to system", async () => {
+      const { rows } = await client.query<{ source: string }>(
+        `INSERT INTO cannabis.compliance_exception
+           (facility_id, exception_type, severity, title)
+         VALUES ($1, 'sync_error', 'info', 'Metrc sync timeout')
+         RETURNING source`,
+        [facilityId],
+      );
+      expect(rows[0]?.source).toBe("system");
+    });
+
+    it("compliance_exception stores object_type and object_id", async () => {
+      const objectId = "00000000-0000-0000-0000-000000000010";
+      await expect(
+        client.query(
+          `INSERT INTO cannabis.compliance_exception
+             (facility_id, exception_type, severity, title, object_type, object_id)
+           VALUES ($1, 'failed_test', 'critical', 'THC over limit', 'lab_result', $2)
+           RETURNING id`,
+          [facilityId, objectId],
+        ),
+      ).resolves.toMatchObject({ rowCount: 1 });
+    });
+
+    // -------------------------------------------------------------------------
+    // compliance_task tests
+    // -------------------------------------------------------------------------
+
+    it("compliance_task accepts machine-generated task linked to exception", async () => {
+      await expect(
+        client.query(
+          `INSERT INTO cannabis.compliance_task
+             (facility_id, compliance_exception_id, task_type, title, source)
+           VALUES ($1, $2, 'upload_document', 'Upload missing COA', 'system')
+           RETURNING id`,
+          [facilityId, exceptionId],
+        ),
+      ).resolves.toMatchObject({ rowCount: 1 });
+    });
+
+    it("compliance_task accepts operator task with user and role assignment", async () => {
+      const due = new Date(Date.now() + 7 * 86400 * 1000).toISOString();
+      await expect(
+        client.query(
+          `INSERT INTO cannabis.compliance_task
+             (facility_id, task_type, title, source,
+              assigned_to_user_id, assigned_to_role_definition_id, due_at)
+           VALUES ($1, 'review_exception', 'Review expired license', 'operator',
+                   $2, $3, $4)
+           RETURNING id`,
+          [facilityId, userId, roleDefId, due],
+        ),
+      ).resolves.toMatchObject({ rowCount: 1 });
+    });
+
+    it("compliance_task source defaults to system", async () => {
+      const { rows } = await client.query<{ source: string }>(
+        `INSERT INTO cannabis.compliance_task
+           (facility_id, task_type, title)
+         VALUES ($1, 'acknowledge', 'Acknowledge sync error')
+         RETURNING source`,
+        [facilityId],
+      );
+      expect(rows[0]?.source).toBe("system");
+    });
+
+    it("compliance_task allows unassigned task (user and role both null)", async () => {
+      await expect(
+        client.query(
+          `INSERT INTO cannabis.compliance_task
+             (facility_id, task_type, title, source)
+           VALUES ($1, 'manual_review', 'Periodic inventory audit', 'operator')
+           RETURNING id`,
+          [facilityId],
+        ),
+      ).resolves.toMatchObject({ rowCount: 1 });
+    });
+
+    // -------------------------------------------------------------------------
+    // policy_pack_registry tests
+    // -------------------------------------------------------------------------
+
+    it("policy_pack_registry accepts a pack linked to regulatory system and jurisdiction", async () => {
+      await expect(
+        client.query(
+          `INSERT INTO cannabis.policy_pack_registry
+             (code, name, regulatory_system_id, jurisdiction_id, version)
+           VALUES ('comp-test-ny-metrc-v1', 'Comp Test NY Metrc v1', $1, $2, '1.0.0')
+           RETURNING id`,
+          [regulatorySystemId, jurisdictionId],
+        ),
+      ).resolves.toMatchObject({ rowCount: 1 });
+    });
+
+    it("policy_pack_registry code is globally unique", async () => {
+      await expect(
+        client.query(
+          `INSERT INTO cannabis.policy_pack_registry
+             (code, name, regulatory_system_id, version)
+           VALUES ('comp-test-ny-metrc-v1', 'Duplicate Pack', $1, '1.0.0')`,
+          [regulatorySystemId],
+        ),
+      ).rejects.toThrow();
     });
   });
 });
