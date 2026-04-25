@@ -16,6 +16,7 @@
     "test": "pnpm -r test",
     "build": "pnpm -r build",
     "db:migrate": "pnpm --filter @canopytrace/db migrate:up",
+    "db:seed": "pnpm --filter @canopytrace/db seed",
     "db:status": "pnpm --filter @canopytrace/db migrate:status",
     "db:reset": "pnpm --filter @canopytrace/db migrate:reset",
     "audit:deps": "pnpm audit --prod",
