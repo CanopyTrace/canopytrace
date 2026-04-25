@@ -28,6 +28,8 @@ const REPRESENTATIVE_TABLES = [
   "role_binding",
   "module_definition",
   "module_setting",
+  "document_asset",
+  "document_binding",
 ] as const;
 
 describe("migration smoke tests", () => {
@@ -57,10 +59,11 @@ describe("migration smoke tests", () => {
     const { rows } = await client.query<{ name: string }>(
       "SELECT name FROM public.schema_migrations ORDER BY run_on",
     );
-    expect(rows).toHaveLength(3);
+    expect(rows).toHaveLength(4);
     expect(rows[0]?.name).toMatch(/baseline/);
     expect(rows[1]?.name).toMatch(/identity_role/);
     expect(rows[2]?.name).toMatch(/module_enablement/);
+    expect(rows[3]?.name).toMatch(/document_tables/);
   });
 
   it.each(REPRESENTATIVE_TABLES)("cannabis.%s exists", async (table) => {
@@ -435,6 +438,184 @@ describe("migration smoke tests", () => {
           [modCultId, facilityId],
         ),
       ).rejects.toThrow();
+    });
+  });
+
+  describe("Story 1.2.3 — document asset and document binding tables", () => {
+    let tenantId: string;
+    let facilityId: string;
+    let assetId: string;
+
+    beforeAll(async () => {
+      const {
+        rows: [t],
+      } = await client.query<{ id: string }>(
+        "INSERT INTO cannabis.tenant (name) VALUES ('doc-test') RETURNING id",
+      );
+      tenantId = t!.id;
+
+      const {
+        rows: [o],
+      } = await client.query<{ id: string }>(
+        "INSERT INTO cannabis.organization (tenant_id, legal_name) VALUES ($1, 'Doc Org') RETURNING id",
+        [tenantId],
+      );
+
+      const {
+        rows: [j],
+      } = await client.query<{ id: string }>(
+        "INSERT INTO cannabis.jurisdiction (code, name) VALUES ('WW', 'Doc Jurisdiction') RETURNING id",
+      );
+
+      const {
+        rows: [f],
+      } = await client.query<{ id: string }>(
+        "INSERT INTO cannabis.facility (organization_id, jurisdiction_id, name, facility_type) VALUES ($1, $2, 'Doc Facility', 'retail') RETURNING id",
+        [o!.id, j!.id],
+      );
+      facilityId = f!.id;
+
+      // Base asset used by most binding tests.
+      const {
+        rows: [a],
+      } = await client.query<{ id: string }>(
+        `INSERT INTO cannabis.document_asset
+           (tenant_id, facility_id, asset_class, storage_key, bucket,
+            file_name, content_type, size_bytes, sha256, retention_class)
+         VALUES ($1, $2, 'evidence', 'uploads/doc-test/coa-001.pdf', 'canopy-docs',
+                 'coa-001.pdf', 'application/pdf', 204800,
+                 'abc123def456abc123def456abc123def456abc123def456abc123def456abcd',
+                 'standard')
+         RETURNING id`,
+        [tenantId, facilityId],
+      );
+      assetId = a!.id;
+    });
+
+    // -------------------------------------------------------------------------
+    // document_asset tests
+    // -------------------------------------------------------------------------
+
+    it("document_asset stores checksum, media type, size, and retention class", async () => {
+      const { rows } = await client.query<{
+        sha256: string;
+        content_type: string;
+        size_bytes: string;
+        retention_class: string;
+      }>(
+        "SELECT sha256, content_type, size_bytes, retention_class FROM cannabis.document_asset WHERE id = $1",
+        [assetId],
+      );
+      expect(rows[0]?.sha256).toBe(
+        "abc123def456abc123def456abc123def456abc123def456abc123def456abcd",
+      );
+      expect(rows[0]?.content_type).toBe("application/pdf");
+      expect(rows[0]?.size_bytes).toBe("204800");
+      expect(rows[0]?.retention_class).toBe("standard");
+    });
+
+    it("document_asset rejects duplicate (bucket, storage_key)", async () => {
+      await expect(
+        client.query(
+          `INSERT INTO cannabis.document_asset
+             (tenant_id, asset_class, storage_key, bucket, retention_class)
+           VALUES ($1, 'evidence', 'uploads/doc-test/coa-001.pdf', 'canopy-docs', 'standard')`,
+          [tenantId],
+        ),
+      ).rejects.toThrow();
+    });
+
+    it("document_asset accepts nullable sha256 and content_type", async () => {
+      await expect(
+        client.query(
+          `INSERT INTO cannabis.document_asset
+             (tenant_id, asset_class, storage_key, bucket, retention_class)
+           VALUES ($1, 'system_artifact', 'exports/doc-test/report.csv', 'canopy-docs', 'standard')
+           RETURNING id`,
+          [tenantId],
+        ),
+      ).resolves.toMatchObject({ rowCount: 1 });
+    });
+
+    // -------------------------------------------------------------------------
+    // document_binding tests
+    // -------------------------------------------------------------------------
+
+    it("document_binding binds asset to arbitrary object type and ID", async () => {
+      const objectId = "00000000-0000-0000-0000-000000000001";
+      await expect(
+        client.query(
+          `INSERT INTO cannabis.document_binding
+             (document_asset_id, object_type, object_id, binding_role)
+           VALUES ($1, 'plant_batch', $2, 'coa')
+           RETURNING id`,
+          [assetId, objectId],
+        ),
+      ).resolves.toMatchObject({ rowCount: 1 });
+    });
+
+    it("document_binding allows same asset bound to different object types", async () => {
+      const objectId = "00000000-0000-0000-0000-000000000002";
+      await expect(
+        client.query(
+          `INSERT INTO cannabis.document_binding
+             (document_asset_id, object_type, object_id, binding_role)
+           VALUES ($1, 'harvest_lot', $2, 'coa')
+           RETURNING id`,
+          [assetId, objectId],
+        ),
+      ).resolves.toMatchObject({ rowCount: 1 });
+    });
+
+    it("document_binding allows same object bound with different roles", async () => {
+      const objectId = "00000000-0000-0000-0000-000000000003";
+      await client.query(
+        `INSERT INTO cannabis.document_binding
+           (document_asset_id, object_type, object_id, binding_role)
+         VALUES ($1, 'transfer', $2, 'manifest')`,
+        [assetId, objectId],
+      );
+      await expect(
+        client.query(
+          `INSERT INTO cannabis.document_binding
+             (document_asset_id, object_type, object_id, binding_role)
+           VALUES ($1, 'transfer', $2, 'sop')
+           RETURNING id`,
+          [assetId, objectId],
+        ),
+      ).resolves.toMatchObject({ rowCount: 1 });
+    });
+
+    it("document_binding rejects duplicate (asset, object_type, object_id, binding_role)", async () => {
+      const objectId = "00000000-0000-0000-0000-000000000004";
+      await client.query(
+        `INSERT INTO cannabis.document_binding
+           (document_asset_id, object_type, object_id, binding_role)
+         VALUES ($1, 'sale', $2, 'receipt')`,
+        [assetId, objectId],
+      );
+      await expect(
+        client.query(
+          `INSERT INTO cannabis.document_binding
+             (document_asset_id, object_type, object_id, binding_role)
+           VALUES ($1, 'sale', $2, 'receipt')`,
+          [assetId, objectId],
+        ),
+      ).rejects.toThrow();
+    });
+
+    it("document_binding metadata column accepts policy-shaped JSON", async () => {
+      const objectId = "00000000-0000-0000-0000-000000000005";
+      const policy = JSON.stringify({ visibility: "internal", expires_at: null });
+      await expect(
+        client.query(
+          `INSERT INTO cannabis.document_binding
+             (document_asset_id, object_type, object_id, binding_role, metadata)
+           VALUES ($1, 'license', $2, 'license_copy', $3)
+           RETURNING metadata`,
+          [assetId, objectId, policy],
+        ),
+      ).resolves.toMatchObject({ rowCount: 1 });
     });
   });
 });
