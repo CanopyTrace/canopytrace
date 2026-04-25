@@ -15,7 +15,7 @@ COPY packages/config-ts/package.json ./packages/config-ts/
 COPY packages/config-eslint/package.json ./packages/config-eslint/
 COPY packages/shared/package.json ./packages/shared/
 COPY apps/ct-api/package.json ./apps/ct-api/
-RUN pnpm install --frozen-lockfile
+RUN pnpm install --frozen-lockfile --ignore-scripts
 
 # ---------------------------------------------------------------------------
 # Stage: build — compile TypeScript
