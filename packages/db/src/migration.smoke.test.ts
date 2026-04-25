@@ -22,9 +22,13 @@ const REPRESENTATIVE_TABLES = [
   "outbox_event",
   "regulatory_sync_job",
   "audit_event",
+  "app_user",
+  "auth_identity",
+  "role_definition",
+  "role_binding",
 ] as const;
 
-describe("baseline migration smoke tests", () => {
+describe("migration smoke tests", () => {
   let container: StartedPostgreSqlContainer;
   let client: Client;
 
@@ -47,12 +51,13 @@ describe("baseline migration smoke tests", () => {
     await container?.stop();
   });
 
-  it("records the migration in schema_migrations", async () => {
+  it("records all migrations in schema_migrations", async () => {
     const { rows } = await client.query<{ name: string }>(
       "SELECT name FROM public.schema_migrations ORDER BY run_on",
     );
-    expect(rows).toHaveLength(1);
+    expect(rows).toHaveLength(2);
     expect(rows[0]?.name).toMatch(/baseline/);
+    expect(rows[1]?.name).toMatch(/identity_role/);
   });
 
   it.each(REPRESENTATIVE_TABLES)("cannabis.%s exists", async (table) => {
@@ -79,5 +84,221 @@ describe("baseline migration smoke tests", () => {
     );
     expect(rows).toHaveLength(1);
     expect(rows[0]?.updated_at.getTime()).toBeGreaterThan(ancientDate.getTime());
+  });
+
+  describe("Story 1.2.1 — identity and role tables", () => {
+    let tenantId: string;
+    let orgId: string;
+    let facilityId: string;
+    let roleDefId: string;
+    let moduleDefId: string;
+
+    beforeAll(async () => {
+      const {
+        rows: [t],
+      } = await client.query<{ id: string }>(
+        "INSERT INTO cannabis.tenant (name) VALUES ('iam-test') RETURNING id",
+      );
+      tenantId = t!.id;
+
+      const {
+        rows: [o],
+      } = await client.query<{ id: string }>(
+        "INSERT INTO cannabis.organization (tenant_id, legal_name) VALUES ($1, 'IAM Org') RETURNING id",
+        [tenantId],
+      );
+      orgId = o!.id;
+
+      const {
+        rows: [j],
+      } = await client.query<{ id: string }>(
+        "INSERT INTO cannabis.jurisdiction (code, name) VALUES ('ZZ', 'Test Jurisdiction') RETURNING id",
+      );
+
+      const {
+        rows: [f],
+      } = await client.query<{ id: string }>(
+        "INSERT INTO cannabis.facility (organization_id, jurisdiction_id, name, facility_type) VALUES ($1, $2, 'IAM Facility', 'retail') RETURNING id",
+        [orgId, j!.id],
+      );
+      facilityId = f!.id;
+
+      const {
+        rows: [r],
+      } = await client.query<{ id: string }>(
+        "INSERT INTO cannabis.role_definition (tenant_id, name) VALUES ($1, 'iam-admin') RETURNING id",
+        [tenantId],
+      );
+      roleDefId = r!.id;
+
+      const {
+        rows: [m],
+      } = await client.query<{ id: string }>(
+        "INSERT INTO cannabis.module_definition (code, name) VALUES ('iam-test-retail', 'IAM Test Retail') RETURNING id",
+      );
+      moduleDefId = m!.id;
+    });
+
+    // -------------------------------------------------------------------------
+    // auth_identity constraint tests
+    // -------------------------------------------------------------------------
+
+    it("auth_identity accepts local identity with password_hash", async () => {
+      const {
+        rows: [u],
+      } = await client.query<{ id: string }>(
+        "INSERT INTO cannabis.app_user (tenant_id, email, full_name) VALUES ($1, 'local@iam.test', 'Local User') RETURNING id",
+        [tenantId],
+      );
+      await expect(
+        client.query(
+          "INSERT INTO cannabis.auth_identity (app_user_id, provider, password_hash) VALUES ($1, 'local', '$2b$12$testhash') RETURNING id",
+          [u!.id],
+        ),
+      ).resolves.toMatchObject({ rowCount: 1 });
+    });
+
+    it("auth_identity rejects duplicate (user, provider)", async () => {
+      const {
+        rows: [u],
+      } = await client.query<{ id: string }>(
+        "INSERT INTO cannabis.app_user (tenant_id, email, full_name) VALUES ($1, 'dup@iam.test', 'Dup User') RETURNING id",
+        [tenantId],
+      );
+      await client.query(
+        "INSERT INTO cannabis.auth_identity (app_user_id, provider, password_hash) VALUES ($1, 'local', '$2b$12$hash1')",
+        [u!.id],
+      );
+      await expect(
+        client.query(
+          "INSERT INTO cannabis.auth_identity (app_user_id, provider, password_hash) VALUES ($1, 'local', '$2b$12$hash2')",
+          [u!.id],
+        ),
+      ).rejects.toThrow();
+    });
+
+    it("auth_identity rejects local identity without password_hash", async () => {
+      const {
+        rows: [u],
+      } = await client.query<{ id: string }>(
+        "INSERT INTO cannabis.app_user (tenant_id, email, full_name) VALUES ($1, 'nohash@iam.test', 'No Hash User') RETURNING id",
+        [tenantId],
+      );
+      await expect(
+        client.query(
+          "INSERT INTO cannabis.auth_identity (app_user_id, provider) VALUES ($1, 'local')",
+          [u!.id],
+        ),
+      ).rejects.toThrow();
+    });
+
+    it("auth_identity rejects oidc identity without provider_sub", async () => {
+      const {
+        rows: [u],
+      } = await client.query<{ id: string }>(
+        "INSERT INTO cannabis.app_user (tenant_id, email, full_name) VALUES ($1, 'nosub@iam.test', 'No Sub User') RETURNING id",
+        [tenantId],
+      );
+      await expect(
+        client.query(
+          "INSERT INTO cannabis.auth_identity (app_user_id, provider) VALUES ($1, 'oidc')",
+          [u!.id],
+        ),
+      ).rejects.toThrow();
+    });
+
+    it("auth_identity accepts oidc identity with provider_sub", async () => {
+      const {
+        rows: [u],
+      } = await client.query<{ id: string }>(
+        "INSERT INTO cannabis.app_user (tenant_id, email, full_name) VALUES ($1, 'oidc@iam.test', 'OIDC User') RETURNING id",
+        [tenantId],
+      );
+      await expect(
+        client.query(
+          "INSERT INTO cannabis.auth_identity (app_user_id, provider, provider_sub) VALUES ($1, 'oidc', 'sub|12345') RETURNING id",
+          [u!.id],
+        ),
+      ).resolves.toMatchObject({ rowCount: 1 });
+    });
+
+    // -------------------------------------------------------------------------
+    // role_binding constraint tests
+    // -------------------------------------------------------------------------
+
+    it("role_binding accepts tenant-scoped binding (no org or facility)", async () => {
+      const {
+        rows: [u],
+      } = await client.query<{ id: string }>(
+        "INSERT INTO cannabis.app_user (tenant_id, email, full_name) VALUES ($1, 'rb-tenant@iam.test', 'Tenant Scope User') RETURNING id",
+        [tenantId],
+      );
+      await expect(
+        client.query(
+          "INSERT INTO cannabis.role_binding (app_user_id, role_definition_id) VALUES ($1, $2) RETURNING id",
+          [u!.id, roleDefId],
+        ),
+      ).resolves.toMatchObject({ rowCount: 1 });
+    });
+
+    it("role_binding accepts org-scoped binding", async () => {
+      const {
+        rows: [u],
+      } = await client.query<{ id: string }>(
+        "INSERT INTO cannabis.app_user (tenant_id, email, full_name) VALUES ($1, 'rb-org@iam.test', 'Org Scope User') RETURNING id",
+        [tenantId],
+      );
+      await expect(
+        client.query(
+          "INSERT INTO cannabis.role_binding (app_user_id, role_definition_id, organization_id) VALUES ($1, $2, $3) RETURNING id",
+          [u!.id, roleDefId, orgId],
+        ),
+      ).resolves.toMatchObject({ rowCount: 1 });
+    });
+
+    it("role_binding accepts facility-scoped binding", async () => {
+      const {
+        rows: [u],
+      } = await client.query<{ id: string }>(
+        "INSERT INTO cannabis.app_user (tenant_id, email, full_name) VALUES ($1, 'rb-facility@iam.test', 'Facility Scope User') RETURNING id",
+        [tenantId],
+      );
+      await expect(
+        client.query(
+          "INSERT INTO cannabis.role_binding (app_user_id, role_definition_id, facility_id) VALUES ($1, $2, $3) RETURNING id",
+          [u!.id, roleDefId, facilityId],
+        ),
+      ).resolves.toMatchObject({ rowCount: 1 });
+    });
+
+    it("role_binding rejects binding with both organization and facility set", async () => {
+      const {
+        rows: [u],
+      } = await client.query<{ id: string }>(
+        "INSERT INTO cannabis.app_user (tenant_id, email, full_name) VALUES ($1, 'rb-ambig@iam.test', 'Ambiguous User') RETURNING id",
+        [tenantId],
+      );
+      await expect(
+        client.query(
+          "INSERT INTO cannabis.role_binding (app_user_id, role_definition_id, organization_id, facility_id) VALUES ($1, $2, $3, $4)",
+          [u!.id, roleDefId, orgId, facilityId],
+        ),
+      ).rejects.toThrow();
+    });
+
+    it("role_binding accepts module-scoped binding", async () => {
+      const {
+        rows: [u],
+      } = await client.query<{ id: string }>(
+        "INSERT INTO cannabis.app_user (tenant_id, email, full_name) VALUES ($1, 'rb-module@iam.test', 'Module Scope User') RETURNING id",
+        [tenantId],
+      );
+      await expect(
+        client.query(
+          "INSERT INTO cannabis.role_binding (app_user_id, role_definition_id, facility_id, module_definition_id) VALUES ($1, $2, $3, $4) RETURNING id",
+          [u!.id, roleDefId, facilityId, moduleDefId],
+        ),
+      ).resolves.toMatchObject({ rowCount: 1 });
+    });
   });
 });
