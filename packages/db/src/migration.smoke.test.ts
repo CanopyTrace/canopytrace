@@ -26,6 +26,8 @@ const REPRESENTATIVE_TABLES = [
   "auth_identity",
   "role_definition",
   "role_binding",
+  "module_definition",
+  "module_setting",
 ] as const;
 
 describe("migration smoke tests", () => {
@@ -55,9 +57,10 @@ describe("migration smoke tests", () => {
     const { rows } = await client.query<{ name: string }>(
       "SELECT name FROM public.schema_migrations ORDER BY run_on",
     );
-    expect(rows).toHaveLength(2);
+    expect(rows).toHaveLength(3);
     expect(rows[0]?.name).toMatch(/baseline/);
     expect(rows[1]?.name).toMatch(/identity_role/);
+    expect(rows[2]?.name).toMatch(/module_enablement/);
   });
 
   it.each(REPRESENTATIVE_TABLES)("cannabis.%s exists", async (table) => {
@@ -299,6 +302,139 @@ describe("migration smoke tests", () => {
           [u!.id, roleDefId, facilityId, moduleDefId],
         ),
       ).resolves.toMatchObject({ rowCount: 1 });
+    });
+  });
+
+  describe("Story 1.2.2 — module definition and module setting tables", () => {
+    let tenantId: string;
+    let orgId: string;
+    let facilityId: string;
+    let modCultId: string;
+    let modRetailId: string;
+
+    beforeAll(async () => {
+      const {
+        rows: [t],
+      } = await client.query<{ id: string }>(
+        "INSERT INTO cannabis.tenant (name) VALUES ('mod-test') RETURNING id",
+      );
+      tenantId = t!.id;
+
+      const {
+        rows: [o],
+      } = await client.query<{ id: string }>(
+        "INSERT INTO cannabis.organization (tenant_id, legal_name) VALUES ($1, 'Mod Org') RETURNING id",
+        [tenantId],
+      );
+      orgId = o!.id;
+
+      const {
+        rows: [j],
+      } = await client.query<{ id: string }>(
+        "INSERT INTO cannabis.jurisdiction (code, name) VALUES ('QQ', 'Mod Jurisdiction') RETURNING id",
+      );
+
+      const {
+        rows: [f],
+      } = await client.query<{ id: string }>(
+        "INSERT INTO cannabis.facility (organization_id, jurisdiction_id, name, facility_type) VALUES ($1, $2, 'Mod Facility', 'cultivation') RETURNING id",
+        [orgId, j!.id],
+      );
+      facilityId = f!.id;
+
+      const {
+        rows: [mc],
+      } = await client.query<{ id: string }>(
+        "INSERT INTO cannabis.module_definition (code, name, compatible_facility_types) VALUES ('mod-test-cultivation', 'Mod Test Cultivation', '{cultivation}') RETURNING id",
+      );
+      modCultId = mc!.id;
+
+      const {
+        rows: [mr],
+      } = await client.query<{ id: string }>(
+        "INSERT INTO cannabis.module_definition (code, name, compatible_facility_types) VALUES ('mod-test-retail', 'Mod Test Retail', '{retail}') RETURNING id",
+      );
+      modRetailId = mr!.id;
+    });
+
+    // -------------------------------------------------------------------------
+    // scope validity tests (baseline CHECK)
+    // -------------------------------------------------------------------------
+
+    it("module_setting accepts tenant-scoped setting", async () => {
+      await expect(
+        client.query(
+          "INSERT INTO cannabis.module_setting (module_definition_id, tenant_id, enabled) VALUES ($1, $2, true) RETURNING id",
+          [modCultId, tenantId],
+        ),
+      ).resolves.toMatchObject({ rowCount: 1 });
+    });
+
+    it("module_setting accepts organization-scoped setting", async () => {
+      await expect(
+        client.query(
+          "INSERT INTO cannabis.module_setting (module_definition_id, organization_id, enabled) VALUES ($1, $2, true) RETURNING id",
+          [modCultId, orgId],
+        ),
+      ).resolves.toMatchObject({ rowCount: 1 });
+    });
+
+    it("module_setting accepts facility-scoped setting", async () => {
+      await expect(
+        client.query(
+          "INSERT INTO cannabis.module_setting (module_definition_id, facility_id, enabled) VALUES ($1, $2, true) RETURNING id",
+          [modCultId, facilityId],
+        ),
+      ).resolves.toMatchObject({ rowCount: 1 });
+    });
+
+    it("module_setting rejects setting with no scope", async () => {
+      await expect(
+        client.query(
+          "INSERT INTO cannabis.module_setting (module_definition_id, enabled) VALUES ($1, true)",
+          [modRetailId],
+        ),
+      ).rejects.toThrow();
+    });
+
+    it("module_setting rejects setting with multiple scopes", async () => {
+      await expect(
+        client.query(
+          "INSERT INTO cannabis.module_setting (module_definition_id, tenant_id, organization_id, enabled) VALUES ($1, $2, $3, true)",
+          [modRetailId, tenantId, orgId],
+        ),
+      ).rejects.toThrow();
+    });
+
+    // -------------------------------------------------------------------------
+    // duplicate scope collision tests (Story 1.2.2 unique indexes)
+    // -------------------------------------------------------------------------
+
+    it("module_setting rejects duplicate (module, tenant) setting", async () => {
+      await expect(
+        client.query(
+          "INSERT INTO cannabis.module_setting (module_definition_id, tenant_id, enabled) VALUES ($1, $2, false)",
+          [modCultId, tenantId],
+        ),
+      ).rejects.toThrow();
+    });
+
+    it("module_setting rejects duplicate (module, organization) setting", async () => {
+      await expect(
+        client.query(
+          "INSERT INTO cannabis.module_setting (module_definition_id, organization_id, enabled) VALUES ($1, $2, false)",
+          [modCultId, orgId],
+        ),
+      ).rejects.toThrow();
+    });
+
+    it("module_setting rejects duplicate (module, facility) setting", async () => {
+      await expect(
+        client.query(
+          "INSERT INTO cannabis.module_setting (module_definition_id, facility_id, enabled) VALUES ($1, $2, false)",
+          [modCultId, facilityId],
+        ),
+      ).rejects.toThrow();
     });
   });
 });
