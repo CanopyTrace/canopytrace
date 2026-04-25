@@ -9,6 +9,7 @@
     "migrate:status": "node scripts/status.js",
     "migrate:reset": "node scripts/reset.js",
     "migrate:create": "node scripts/run.js create",
+    "seed": "node scripts/seed.js",
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
