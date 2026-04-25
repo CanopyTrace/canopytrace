@@ -66,9 +66,7 @@ async function status() {
   const pending = files.filter(
     (f) => !applied.has(f.replace(/\.(sql|js|ts)$/, "")),
   ).length;
-  process.stdout.write(
-    `  ${applied.size} applied, ${pending} pending\n\n`,
-  );
+  process.stdout.write(`  ${applied.size} applied, ${pending} pending\n\n`);
 }
 
 status().catch((err) => {
