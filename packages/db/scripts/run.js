@@ -39,15 +39,12 @@ if (!process.env["DATABASE_URL"]) {
 // ---------------------------------------------------------------------------
 // Resolve node-pg-migrate CLI entry point (cross-platform, no shell needed)
 // ---------------------------------------------------------------------------
-const pgMigrateRoot = path.dirname(
-  require.resolve("node-pg-migrate/package.json"),
-);
+const pgMigrateRoot = path.dirname(require.resolve("node-pg-migrate/package.json"));
 const pkgJson = JSON.parse(
   fs.readFileSync(path.join(pgMigrateRoot, "package.json"), "utf8"),
 );
 const binField = pkgJson["bin"];
-const binRelPath =
-  typeof binField === "string" ? binField : binField["node-pg-migrate"];
+const binRelPath = typeof binField === "string" ? binField : binField["node-pg-migrate"];
 const binPath = path.resolve(pgMigrateRoot, binRelPath);
 
 // ---------------------------------------------------------------------------
@@ -56,9 +53,7 @@ const binPath = path.resolve(pgMigrateRoot, binRelPath);
 const [direction, ...rest] = process.argv.slice(2);
 
 if (!direction) {
-  process.stderr.write(
-    "Usage: node scripts/run.js <up|down|status|create> [args]\n",
-  );
+  process.stderr.write("Usage: node scripts/run.js <up|down|status|create> [args]\n");
   process.exit(1);
 }
 

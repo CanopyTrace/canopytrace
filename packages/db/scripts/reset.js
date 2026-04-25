@@ -30,9 +30,7 @@ if (!process.env["DATABASE_URL"]) {
 const { Client } = require("pg");
 
 async function reset() {
-  process.stdout.write(
-    "⚠️  Dropping cannabis schema and migration history…\n",
-  );
+  process.stdout.write("⚠️  Dropping cannabis schema and migration history…\n");
   const client = new Client({ connectionString: process.env["DATABASE_URL"] });
   await client.connect();
   try {
@@ -44,11 +42,10 @@ async function reset() {
   }
 
   process.stdout.write("Re-applying all migrations…\n");
-  const result = spawnSync(
-    process.execPath,
-    [path.resolve(__dirname, "run.js"), "up"],
-    { stdio: "inherit", env: process.env },
-  );
+  const result = spawnSync(process.execPath, [path.resolve(__dirname, "run.js"), "up"], {
+    stdio: "inherit",
+    env: process.env,
+  });
   process.exit(result.status ?? 0);
 }
 
