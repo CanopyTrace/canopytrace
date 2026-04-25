@@ -1,0 +1,10 @@
+{
+  "extends": "@canopytrace/config-ts/tsconfig.base.json",
+  "compilerOptions": {
+    "module": "ESNext",
+    "noEmit": true,
+    "rootDir": "src",
+    "types": ["node"]
+  },
+  "include": ["src"]
+}
