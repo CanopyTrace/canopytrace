@@ -22,6 +22,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@canopytrace/shared": "workspace:*",
     "pg": "^8.0.0"
   },
   "devDependencies": {
@@ -31,6 +32,7 @@
     "@types/node": "^20.0.0",
     "@types/pg": "^8.11.0",
     "eslint": "^10.2.1",
+    "node-pg-migrate": "^8.0.0",
     "prettier": "^3.3.3",
     "testcontainers": "^10.0.0",
     "typescript": "^6.0.3",

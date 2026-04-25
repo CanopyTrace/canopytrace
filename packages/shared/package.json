@@ -13,6 +13,7 @@
     }
   },
   "scripts": {
+    "prepare": "tsc",
     "lint": "eslint src --max-warnings 0",
     "format": "prettier --write . --ignore-path ../../.prettierignore",
     "format:check": "prettier --check . --ignore-path ../../.prettierignore",

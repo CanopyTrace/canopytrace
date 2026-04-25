@@ -5,5 +5,6 @@ export default defineConfig({
     include: ["src/**/*.test.ts"],
     hookTimeout: 180_000,
     testTimeout: 30_000,
+    env: { TZ: "UTC" },
   },
 });
