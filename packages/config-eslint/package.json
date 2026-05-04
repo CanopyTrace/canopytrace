@@ -13,9 +13,9 @@
     "build": "echo 'No build target for config-eslint'"
   },
   "dependencies": {
-    "@typescript-eslint/eslint-plugin": "^8.15.0",
-    "@typescript-eslint/parser": "^8.15.0",
-    "eslint": "^10.2.1",
+    "@typescript-eslint/eslint-plugin": "^8.59.1",
+    "@typescript-eslint/parser": "^8.59.1",
+    "eslint": "^10.3.0",
     "eslint-config-prettier": "^10.1.8",
     "eslint-plugin-import": "^2.31.0"
   },
