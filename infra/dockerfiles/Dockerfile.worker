@@ -1,6 +1,6 @@
 # CanopyTrace Worker — multi-stage Docker build
 
-FROM node:20-alpine AS base
+FROM node:26-alpine AS base
 RUN corepack enable && corepack prepare pnpm@9.15.0 --activate
 WORKDIR /app
 
@@ -21,7 +21,7 @@ RUN pnpm --filter @canopytrace/ct-worker build
 FROM build AS deploy
 RUN pnpm --filter @canopytrace/ct-worker deploy --prod /deploy
 
-FROM node:20-alpine AS runner
+FROM node:26-alpine AS runner
 RUN npm install -g npm@latest
 WORKDIR /app
 
