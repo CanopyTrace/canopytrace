@@ -27,7 +27,7 @@
     "@canopytrace/config-eslint": "workspace:*",
     "@canopytrace/config-ts": "workspace:*",
     "@nestjs/testing": "^11.1.18",
-    "@types/node": "^20.0.0",
+    "@types/node": "^25.8.0",
     "@types/supertest": "^6.0.2",
     "eslint": "^10.2.1",
     "prettier": "^3.3.3",
